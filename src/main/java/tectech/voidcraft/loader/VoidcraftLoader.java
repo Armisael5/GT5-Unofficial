@@ -25,6 +25,7 @@ import tectech.voidcraft.item.ItemVoidcraft;
 import tectech.voidcraft.item.ItemVoidcraftCovers;
 import tectech.voidcraft.item.ItemVoidcraftDebugDysonSwarm;
 import tectech.voidcraft.item.ItemVoidcraftDebugInfraShell;
+import tectech.voidcraft.item.ItemVoidcraftDebugSpinRate;
 import tectech.voidcraft.item.ItemVoidcraftDebugStarControl;
 import tectech.voidcraft.item.ItemVoidcraftDebugStarDepletion;
 import tectech.voidcraft.item.ItemVoidcraftInfraComponent;
@@ -233,6 +234,32 @@ public final class VoidcraftLoader {
             }
         });
         TecTech.LOGGER.info("Star depletion debug item registered");
+
+        // Debug tool (item → effect registry): right-clicked on the UnstableSolarSystem machine, LINKS the tool
+        // to that machine (persisted on the stack, so it survives the machine's ignition/re-ignition cycles) and
+        // cycles its star's spin-rate multiplier through a fixed preset list plus a continuous sweep mode — the
+        // visual proof the anchor+rate rotation clock (USSRotationClock) never jumps the star's rotation when
+        // the rate changes. Once linked, right-clicking the SAME tool in open air repeats the cycle wirelessly
+        // (see ItemVoidcraftDebugSpinRate.onItemRightClick) so the effect can be watched from a distance.
+        ItemVoidcraftDebugSpinRate.run();
+        VoidcraftDebugEffectRegistry.register(ItemVoidcraftDebugSpinRate.INSTANCE, (machine, player) -> {
+            IGregTechTileEntity mte = machine.getBaseMetaTileEntity();
+            ItemStack held = player.getHeldItem();
+            if (mte != null && held != null) {
+                ItemVoidcraftDebugSpinRate
+                    .link(held, mte.getWorld(), mte.getXCoord(), mte.getYCoord(), mte.getZCoord());
+            }
+            String label = machine.debugCycleStarSpinRate();
+            if (label != null) {
+                player.addChatMessage(
+                    new ChatComponentText(
+                        StatCollector.translateToLocalFormatted("tt.voidcraft_debug_spin_rate.feedback", label)));
+            } else {
+                player.addChatMessage(
+                    new ChatComponentText(StatCollector.translateToLocal("tt.voidcraft_debug_spin_rate.no_star")));
+            }
+        });
+        TecTech.LOGGER.info("Star spin-rate debug item registered");
 
         // Debug tools (item → effect registry): right-clicked on the UnstableSolarSystem machine — reveal random
         // ripple points, set the star's size to the injector's cap, set the remaining lifespan, or force the

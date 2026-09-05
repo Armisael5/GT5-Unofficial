@@ -69,13 +69,19 @@ public class EOHTileEntitySR extends TileEntitySpecialRenderer {
         // Voidcraft USS has synced its virtual orbit clock — then advance from the last sync at the normal rate
         // so the star/planet phases keep the server's clock (it only ever runs FASTER than the world during a
         // stellar-acceleration second, which the machine re-syncs every tick of).
-        float time;
+        // Kept as double (see #7881): a float loses sub-tick precision once the accumulated tick count grows large,
+        // which reads as the animation stuttering.
+        double time;
         if (te.getUssOrbitTime() > 0L) {
             long sinceSync = world.getTotalWorldTime() - te.getUssSyncedWorldTime();
-            time = (float) (te.getUssOrbitTime() + Math.max(0L, sinceSync)) + partialTicks;
+            time = (double) (te.getUssOrbitTime() + Math.max(0L, sinceSync)) + partialTicks;
         } else {
-            time = world.getTotalWorldTime() + partialTicks;
+            time = (double) world.getTotalWorldTime() + partialTicks;
         }
+        // The star's own spin rides an independently-adjustable rate on top of the shared clock above (see
+        // TileEntityEyeOfHarmony.currentStarSpinTime / USSRotationClock): changing that rate re-anchors instead
+        // of recomputing the whole angle, so it never jumps — only its speed changes going forward.
+        final double starSpinTime = te.currentStarSpinTime(time);
 
         eyeModel.translation((float) x + 0.5f, (float) y + 0.5f, (float) z + 0.5f);
 
@@ -108,7 +114,7 @@ public class EOHTileEntitySR extends TileEntitySpecialRenderer {
                 IItemRenderer.ItemRenderType.INVENTORY,
                 new Color(te.getStarColor()),
                 te.getStarShellColor(),
-                time,
+                starSpinTime,
                 starRadius,
                 te.isStarHalo(),
                 exploding ? USSSupernovaExplosion.bodyGain(progress, hypernova, time) : 1f);
@@ -196,13 +202,14 @@ public class EOHTileEntitySR extends TileEntitySpecialRenderer {
                 spawnExplosionParticles(te, world, hypernova, progress, te.getStarSize(), x, y, z);
             }
         } else {
-            EOHRenderingUtils.renderEOHStar(eyeModel, IItemRenderer.ItemRenderType.INVENTORY, time, te.getStarSize());
+            EOHRenderingUtils
+                .renderEOHStar(eyeModel, IItemRenderer.ItemRenderType.INVENTORY, starSpinTime, te.getStarSize());
         }
 
         RenderState.restore(GL11.GL_BLEND, blendWas);
     }
 
-    private void renderOrbitObjects(TileEntityEyeOfHarmony te, float time) {
+    private void renderOrbitObjects(TileEntityEyeOfHarmony te, double time) {
 
         // Phase 4 pass 5.1: an EXPLICIT planet system (USS) renders as self-contained tinted spheres — it never
         // falls back to the legacy lazy random fill, and does not depend on the legacy orbit shader or the IORE

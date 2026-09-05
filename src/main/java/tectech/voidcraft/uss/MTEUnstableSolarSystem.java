@@ -2943,6 +2943,80 @@ public class MTEUnstableSolarSystem extends TTMultiblockBase implements ISurviva
     }
 
     /**
+     * @return the star render block's tile entity (null when there is no base machine, the star is not ignited,
+     *         or the render block is missing) — the offset lookup shared by createRenderBlock,
+     *         reapplyStarRenderState, and the debug effects below.
+     */
+    private TileEntityEyeOfHarmony getRendererTileEntity() {
+        IGregTechTileEntity mte = getBaseMetaTileEntity();
+        if (mte == null || uss == null || !uss.isIgnited()) {
+            return null;
+        }
+        int x = mte.getXCoord();
+        int y = mte.getYCoord();
+        int z = mte.getZCoord();
+        double xOffset = 32 * getExtendedFacing().getRelativeBackInWorld().offsetX;
+        double yOffset = 32 * getExtendedFacing().getRelativeBackInWorld().offsetY;
+        double zOffset = 32 * getExtendedFacing().getRelativeBackInWorld().offsetZ;
+        return (TileEntityEyeOfHarmony) mte.getWorld()
+            .getTileEntity((int) (x + xOffset), (int) (y + yOffset), (int) (z + zOffset));
+    }
+
+    /**
+     * The preset spin-rate multipliers {@link #debugCycleStarSpinRate} cycles through, followed by one more stop
+     * for the continuous sweep mode (index {@code DEBUG_SPIN_RATE_PRESETS.length}, not a member of this array).
+     */
+    private static final double[] DEBUG_SPIN_RATE_PRESETS = { 1.0, 5.0, 20.0, 0.2, -1.0 };
+
+    /**
+     * Debug path: cycle the star's own spin-rate multiplier through {@link #DEBUG_SPIN_RATE_PRESETS}, then the
+     * continuous 1x–5x sweep mode, then back to the start — re-anchors the render TE's spin clock (see
+     * {@code TileEntityEyeOfHarmony.setStarSpinRate}/{@code setStarSpinSweep} / {@code USSRotationClock}) so the
+     * visible rotation continues smoothly from wherever it currently is: this is the visual proof the anchor+rate
+     * mechanism never jumps the angle, only its rate of change — even switching into or out of the sweep.
+     *
+     * @return a display label for the mode now in effect (e.g. {@code "5.0x"} or {@code "sweep (1x-5x)"}), or
+     *         {@code null} when not ignited / the render TE is unreachable
+     */
+    public String debugCycleStarSpinRate() {
+        TileEntityEyeOfHarmony te = getRendererTileEntity();
+        IGregTechTileEntity mte = getBaseMetaTileEntity();
+        if (te == null || mte == null) {
+            return null;
+        }
+        int currentIndex = -1;
+        if (!te.isStarSpinSweep()) {
+            double current = te.getStarSpinRate();
+            for (int i = 0; i < DEBUG_SPIN_RATE_PRESETS.length; i++) {
+                if (DEBUG_SPIN_RATE_PRESETS[i] == current) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+        }
+        // currentIndex stays -1 (→ nextIndex 0) both for "coming out of sweep" and for "an unrecognized rate" —
+        // either way the cycle just restarts cleanly at the first preset.
+        final int nextIndex = (currentIndex + 1) % (DEBUG_SPIN_RATE_PRESETS.length + 1);
+        long worldTime = mte.getWorld()
+            .getTotalWorldTime();
+        // Re-anchor in the SAME clock basis the renderer feeds currentStarSpinTime with (see EOHTileEntitySR) —
+        // the USS-synced virtual orbit time when set, else raw world time — not raw world time unconditionally,
+        // or a star mid-stellar-acceleration would anchor against the wrong basis and jump after all.
+        double currentSystemTime = te.getUssOrbitTime() > 0L
+            ? te.getUssOrbitTime() + Math.max(0L, worldTime - te.getUssSyncedWorldTime())
+            : worldTime;
+        mte.getWorld()
+            .markBlockForUpdate(te.xCoord, te.yCoord, te.zCoord);
+        if (nextIndex == DEBUG_SPIN_RATE_PRESETS.length) {
+            te.setStarSpinSweep(currentSystemTime);
+            return "sweep (1x-5x)";
+        }
+        double next = DEBUG_SPIN_RATE_PRESETS[nextIndex];
+        te.setStarSpinRate(next, currentSystemTime);
+        return String.format("%.1fx", next);
+    }
+
+    /**
      * Debug path: reveal (scan) the first ripple whose Continuum Stabilizer shell is not fully built and add units
      * there (no resource cost) — the target's saturation moves the effect to the next ripple.
      *

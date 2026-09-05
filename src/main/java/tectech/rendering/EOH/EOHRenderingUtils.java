@@ -119,7 +119,7 @@ public abstract class EOHRenderingUtils {
             1.0f);
     }
 
-    public static void renderEOHStar(Matrix4fc base, IItemRenderer.ItemRenderType type, float partialTicks,
+    public static void renderEOHStar(Matrix4fc base, IItemRenderer.ItemRenderType type, double partialTicks,
         double starRadius) {
         renderStar(
             base,
@@ -141,8 +141,8 @@ public abstract class EOHRenderingUtils {
      *
      * @param color the opaque ARGB color of the star (the registered definition's color)
      */
-    public static void renderEOHStar(Matrix4fc base, IItemRenderer.ItemRenderType type, Color color, float partialTicks,
-        double starRadius) {
+    public static void renderEOHStar(Matrix4fc base, IItemRenderer.ItemRenderType type, Color color,
+        double partialTicks, double starRadius) {
         renderStar(
             base,
             type,
@@ -173,7 +173,7 @@ public abstract class EOHRenderingUtils {
      *                   halo star treatment — see {@link #HALO_STAR_LAYER_SCALE})
      */
     public static void renderUSSStar(Matrix4fc base, IItemRenderer.ItemRenderType type, Color color, int shellColor,
-        float partialTicks, double starRadius, boolean halo) {
+        double partialTicks, double starRadius, boolean halo) {
         renderUSSStar(base, type, color, shellColor, partialTicks, starRadius, halo, 1f);
     }
 
@@ -181,11 +181,11 @@ public abstract class EOHRenderingUtils {
      * The USS star with a layer-gain MULTIPLIER on top of the class gain (the transient render treatment — the
      * supernova/hypernova show overdrives the layers past their registered brightness; 1.0 = the registered look).
      *
-     * @see #renderUSSStar(Matrix4fc, IItemRenderer.ItemRenderType, Color, int, float, double, boolean)
+     * @see #renderUSSStar(Matrix4fc, IItemRenderer.ItemRenderType, Color, int, double, double, boolean)
      * @param gainBoost the brightness multiplier applied to every layer's gain
      */
     public static void renderUSSStar(Matrix4fc base, IItemRenderer.ItemRenderType type, Color color, int shellColor,
-        float partialTicks, double starRadius, boolean halo, float gainBoost) {
+        double partialTicks, double starRadius, boolean halo, float gainBoost) {
         final Color shell = shellColor != 0 ? new Color(shellColor) : color;
         renderStar(
             base,
@@ -205,7 +205,7 @@ public abstract class EOHRenderingUtils {
     // Used for GORGE item renderer only.
     private static final Color GORGEStarColour = new Color(1.0f, 1.0f, 1.0f, 1.0f);
 
-    public static void renderGORGEStar(Matrix4fc base, IItemRenderer.ItemRenderType type, float partialTicks,
+    public static void renderGORGEStar(Matrix4fc base, IItemRenderer.ItemRenderType type, double partialTicks,
         double starRadius) {
         renderStar(
             base,
@@ -224,7 +224,7 @@ public abstract class EOHRenderingUtils {
     private static final Matrix4f starBase = new Matrix4f();
 
     private static void renderStar(Matrix4fc base, IItemRenderer.ItemRenderType type, Color[] layerColors,
-        float partialTicks, double starRadius, ResourceLocation[] layers, float rotationScale, float[] layerAlpha,
+        double partialTicks, double starRadius, ResourceLocation[] layers, float rotationScale, float[] layerAlpha,
         float[] layerGain, float[] layerScale, boolean shellInverted) {
         if (!shadersReady()) return;
 
@@ -274,7 +274,8 @@ public abstract class EOHRenderingUtils {
     private static final Matrix4f layerMatrix = new Matrix4f();
 
     private static void renderStarLayer(int layer, ResourceLocation texture, Color color, float alpha,
-        float partialTicks, double starRadius, float rotationScale, float scale, float gain, boolean invertWinding) {
+        double partialTicks, double starRadius, float rotationScale, float scale, float gain,
+        boolean invertWinding) {
 
         if (layer >= 3) throw new IllegalArgumentException("Star rendering only supports three layers.");
 
@@ -289,7 +290,10 @@ public abstract class EOHRenderingUtils {
             .getTextureManager()
             .bindTexture(texture);
 
-        final float rotation = (BASE_ROTATIONS[layer] + ROTATION_SPEEDS[layer] * rotationScale * partialTicks) % 360f;
+        // Kept in double until the modulo (see #7881): a float loses sub-tick precision once partialTicks grows
+        // large, which reads as the animation stuttering.
+        final float rotation = (float) ((BASE_ROTATIONS[layer] + ROTATION_SPEEDS[layer] * rotationScale
+            * partialTicks) % 360f);
         final float radius = (float) (starRadius * scale);
         final Vector3f axis = LAYER_AXIS[layer];
 
@@ -404,7 +408,7 @@ public abstract class EOHRenderingUtils {
      * @param time     world time + partial ticks (the shared animation clock)
      * @param starSize the star size factor (as used for the orbit offset)
      */
-    public static void renderUSSOrbits(Matrix4fc base, List<TileEntityEyeOfHarmony.PlanetSpec> specs, float time,
+    public static void renderUSSOrbits(Matrix4fc base, List<TileEntityEyeOfHarmony.PlanetSpec> specs, double time,
         float starSize) {
         if (!shadersReady() || specs == null || specs.isEmpty()) return;
 
@@ -431,9 +435,9 @@ public abstract class EOHRenderingUtils {
             // angle is the RADIUS law — the SAME law USSFleetOrbit.planetAnchorPosition uses for the ships'
             // hover/beam, so rendered planets and tracking ships never drift apart. (The old spec.orbitSpeed·0.1·time
             // was independent of radius: far planets swept the sky as fast as near ones.)
-            final float orbitAngle = (USSFleetOrbit.ORBIT_DEG_PER_TICK_PER_BLOCK * time / radius) % 360f;
+            final float orbitAngle = (float) ((USSFleetOrbit.ORBIT_DEG_PER_TICK_PER_BLOCK * time / radius) % 360f);
             // The planet's own SPIN (rotation on its axis) keeps the legacy pace — pass 30 only re-pins the ORBIT.
-            final float spinAngle = (spec.rotationSpeed * USS_ORBIT_SPEED_SCALE * time) % 360f;
+            final float spinAngle = (float) ((spec.rotationSpeed * USS_ORBIT_SPEED_SCALE * time) % 360f);
             final float scale = Math.max(0.05f, spec.scale);
 
             planetMatrix.set(base)
@@ -820,7 +824,7 @@ public abstract class EOHRenderingUtils {
      * @param starRadius   the star's render radius (as in {@link #renderUSSStar})
      * @param tint         the loops' opaque ARGB tint (the star's core color; 0 → white)
      */
-    public static void renderMagnetarFieldLoops(Matrix4fc base, float partialTicks, double starRadius, int tint) {
+    public static void renderMagnetarFieldLoops(Matrix4fc base, double partialTicks, double starRadius, int tint) {
         if (!shadersReady() || starRadius <= 0.0) return;
 
         final int argb = tint != 0 ? tint : 0xFFFFFFFF;
@@ -840,7 +844,7 @@ public abstract class EOHRenderingUtils {
             final ShaderHandle shader = texturedShader();
             shader.use();
             bindTexture(RING_TEXTURE); // 1×1 white — the tint alone shapes the lines
-            final float precession = (MAGNETAR_LOOP_PRECESSION * partialTicks) % 360f;
+            final float precession = (float) ((MAGNETAR_LOOP_PRECESSION * partialTicks) % 360f);
             for (int pair = 0; pair < MAGNETAR_LOOP_PAIRS; pair++) {
                 for (int loop = 0; loop < 2; loop++) {
                     for (int oval = 0; oval < MAGNETAR_LOOP_SCALES.length; oval++) {
@@ -1063,7 +1067,7 @@ public abstract class EOHRenderingUtils {
      * @param starRadius the star's rendered radius (blocks — already collapsed during the finale)
      * @param coreColor  the star's registered core color (the churn tint; 0 = white)
      */
-    public static void renderSupernovaChurn(Matrix4fc base, float time, float starRadius, int coreColor) {
+    public static void renderSupernovaChurn(Matrix4fc base, double time, float starRadius, int coreColor) {
         if (!shadersReady() || starRadius <= 0f) {
             return;
         }
@@ -1084,10 +1088,14 @@ public abstract class EOHRenderingUtils {
             final ShaderHandle shader = texturedShader();
             shader.use();
             bindTexture(SUPERNOVA_CHURN_TEXTURE);
+            // Reduced into radians before the float cast (see #7881): a raw time·speed value loses the fractional
+            // radian a float needs for a smooth spin once time grows large.
+            final float spinY = (float) ((time * SUPERNOVA_CHURN_SPIN_Y) % (2.0 * Math.PI));
+            final float spinX = (float) ((time * SUPERNOVA_CHURN_SPIN_X) % (2.0 * Math.PI));
             churnMatrix.set(base)
                 .scale(radius, radius, radius)
-                .rotate(time * SUPERNOVA_CHURN_SPIN_Y, 0f, 1f, 0f)
-                .rotate(time * SUPERNOVA_CHURN_SPIN_X, 1f, 0f, 0f);
+                .rotate(spinY, 0f, 1f, 0f)
+                .rotate(spinX, 1f, 0f, 0f);
             GL20.glUniform4f(
                 shader.loc(SharedShaders.U_TINT),
                 ((tint >> 16) & 0xFF) / 255f,
@@ -1398,7 +1406,7 @@ public abstract class EOHRenderingUtils {
 
     private static final Matrix4f planetMatrix = new Matrix4f();
 
-    public static void renderOrbits(Matrix4fc base, List<TileEntityEyeOfHarmony.OrbitingObject> objects, float time,
+    public static void renderOrbits(Matrix4fc base, List<TileEntityEyeOfHarmony.OrbitingObject> objects, double time,
         float starSize, float speedScale, float starRescale) {
         if (orbitShader == null || !orbitShader.isValid() || objects.isEmpty()) return;
 
@@ -1418,8 +1426,8 @@ public abstract class EOHRenderingUtils {
         for (int i = 0; i < count; i++) {
             final TileEntityEyeOfHarmony.OrbitingObject obj = objects.get(i);
 
-            final float orbitAngle = (obj.orbitSpeed * speedScale * time) % 360f;
-            final float spinAngle = (obj.rotationSpeed * speedScale * time) % 360f;
+            final float orbitAngle = (float) ((obj.orbitSpeed * speedScale * time) % 360f);
+            final float spinAngle = (float) ((obj.rotationSpeed * speedScale * time) % 360f);
 
             orbitTransforms.put(obj.zAngle * DEG_TO_RAD)
                 .put(obj.xAngle * DEG_TO_RAD)
@@ -1584,7 +1592,7 @@ public abstract class EOHRenderingUtils {
      * @param count    satellites currently in the swarm (0 → nothing drawn)
      * @param capacity the star's satellite capacity (the full-shell count; &le; 0 → nothing drawn)
      */
-    public static void renderUSSDysonSwarm(Matrix4fc base, float time, float starSize, long count, long capacity) {
+    public static void renderUSSDysonSwarm(Matrix4fc base, double time, float starSize, long count, long capacity) {
         renderUSSInfraShell(
             base,
             time,
@@ -1601,9 +1609,9 @@ public abstract class EOHRenderingUtils {
      * The generic infrastructure shell (the constructor-built infrastructure pass — the Dyson Swarm shell's
      * triangle lattice, parameterized), single-sided accent (the outer face only).
      *
-     * @see #renderUSSInfraShell(Matrix4fc, float, float, float, long, long, int, int, boolean)
+     * @see #renderUSSInfraShell(Matrix4fc, double, float, float, long, long, int, int, boolean)
      */
-    public static void renderUSSInfraShell(Matrix4fc base, float time, float radius, float edge, long count,
+    public static void renderUSSInfraShell(Matrix4fc base, double time, float radius, float edge, long count,
         long capacity, int shellTint, int accentTint) {
         renderUSSInfraShell(base, time, radius, edge, count, capacity, shellTint, accentTint, false);
     }
@@ -1635,7 +1643,7 @@ public abstract class EOHRenderingUtils {
      *                    shell; the depth test keeps only the face turned toward the camera, so the inner face
      *                    reads through the lattice gaps and the shell's missing panels)
      */
-    public static void renderUSSInfraShell(Matrix4fc base, float time, float radius, float edge, long count,
+    public static void renderUSSInfraShell(Matrix4fc base, double time, float radius, float edge, long count,
         long capacity, int shellTint, int accentTint, boolean innerAccent) {
         if (!shadersReady() || count <= 0L || capacity <= 0L) return;
 
@@ -1664,10 +1672,13 @@ public abstract class EOHRenderingUtils {
             GL11.glEnable(GL11.GL_BLEND);
             GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
 
-            // tilt (fixed) then spin (the world clock) — the shell keeps a readable face while turning.
+            // tilt (fixed) then spin (the world clock) — the shell keeps a readable face while turning. Reduced
+            // into radians before the float cast (see #7881): a raw time·speed value loses the fractional radian
+            // a float needs for a smooth spin once time grows large.
+            final float spin = (float) ((time * DYSON_ROTATION_SPEED) % (2.0 * Math.PI));
             dysonMatrix.set(base)
                 .rotate(DYSON_TILT, 1f, 0f, 0f)
-                .rotate((float) (time * DYSON_ROTATION_SPEED), 0f, 1f, 0f);
+                .rotate(spin, 0f, 1f, 0f);
 
             final ShaderHandle shader = texturedShader();
             shader.use();

@@ -1219,6 +1219,13 @@ tt.voidcraft_debug_star_depletion.hint=Debug: right-click the UnstableSolarSyste
 tt.voidcraft_debug_star_depletion.feedback=Depleted %s units of the star's primary (%s remaining).
 tt.voidcraft_debug_star_depletion.no_star=This UnstableSolarSystem has no ignited star.
 tt.voidcraft_debug_star_depletion.depleted=The star's primary material is already fully depleted.
+
+item.tt.voidcraft_debug_spin_rate.name=Spin Rate Cycler (Debug)
+tt.voidcraft_debug_spin_rate.hint=Debug: right-click an UnstableSolarSystem machine to link this tool to it and cycle its star's spin-rate multiplier (1x / 5x / 20x / 0.2x / reverse / smooth 1x-5x sweep) with no visual jump. Once linked, right-click in open air to cycle it again from anywhere.
+tt.voidcraft_debug_spin_rate.linked=Linked to the UnstableSolarSystem at %s, %s, %s.
+tt.voidcraft_debug_spin_rate.not_linked=Not linked yet — right-click an UnstableSolarSystem machine first.
+tt.voidcraft_debug_spin_rate.feedback=Star spin rate set to %s.
+tt.voidcraft_debug_spin_rate.no_star=This UnstableSolarSystem has no ignited star.
 item.tt.voidcraft_debug_stabilizer_shell.name=Continuum Stabilizer Shell Injector (Debug)
 tt.voidcraft_debug_stabilizer_shell.hint=Debug: right-click the UnstableSolarSystem machine to reveal the next ripple and inject 10% of its Continuum Stabilizer shell capacity (a full shell moves to the next ripple).
 tt.voidcraft_debug_stabilizer_shell.feedback=Revealed ripple %s and injected %s units into its Continuum Stabilizer shell (%s/%s).

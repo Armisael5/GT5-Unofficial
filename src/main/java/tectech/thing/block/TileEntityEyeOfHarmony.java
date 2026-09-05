@@ -21,6 +21,7 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.AxisAlignedBB;
 
 import gtneioreplugin.plugin.block.ModBlocks;
+import tectech.voidcraft.uss.USSRotationClock;
 import tectech.voidcraft.uss.USSStarColor;
 import tectech.voidcraft.uss.USSStarRenderType;
 
@@ -230,6 +231,100 @@ public class TileEntityEyeOfHarmony extends TileEntity {
     public void setUssOrbitTime(long orbitTime, long syncedWorldTime) {
         this.ussOrbitTime = orbitTime;
         this.ussSyncedWorldTime = syncedWorldTime;
+    }
+
+    /**
+     * The star's own spin-rate multiplier, as an anchored {@link USSRotationClock}: {@code speed × elapsedTime}
+     * would jump the star's rotation the instant the speed changes (the whole angle recomputes under the new
+     * speed against an already-large elapsed time), so instead the star's accumulated virtual spin-time is
+     * anchored at the moment the speed last changed — {@link #setStarSpinRate}/{@link #setStarSpinSweep} freeze
+     * the current spin-time under whichever mode was active before applying the new one, so the visible rotation
+     * only ever changes its RATE, never its angle. 1.0 = the registered look (spin-time tracks the shared system
+     * clock 1:1, unchanged from before this existed).
+     */
+    private double starSpinAnchorTime = 0.0;
+    private double starSpinAnchorClockTime = 0.0;
+    private double starSpinRate = 1.0;
+
+    /**
+     * True while the star's spin rate continuously, smoothly oscillates ({@link #STAR_SPIN_SWEEP_MID} ±
+     * {@link #STAR_SPIN_SWEEP_AMPLITUDE}) instead of holding {@link #starSpinRate} constant — see
+     * {@link USSRotationClock#sweepSpinTimeAt}.
+     */
+    private boolean starSpinSweep = false;
+
+    /** The sweep mode's center speed (with {@link #STAR_SPIN_SWEEP_AMPLITUDE}, a 1x–5x range). */
+    private static final double STAR_SPIN_SWEEP_MID = 3.0;
+    /** The sweep mode's half-range. */
+    private static final double STAR_SPIN_SWEEP_AMPLITUDE = 2.0;
+    /** The sweep mode's full cycle period (200 ticks = 10s), as an angular frequency (2π / period). */
+    private static final double STAR_SPIN_SWEEP_ANGULAR_FREQUENCY = 2.0 * Math.PI / 200.0;
+
+    public double getStarSpinAnchorTime() {
+        return starSpinAnchorTime;
+    }
+
+    public double getStarSpinAnchorClockTime() {
+        return starSpinAnchorClockTime;
+    }
+
+    public double getStarSpinRate() {
+        return starSpinRate;
+    }
+
+    public boolean isStarSpinSweep() {
+        return starSpinSweep;
+    }
+
+    /**
+     * @param currentClockTime the shared system clock's current reading (the same value passed to
+     *                         {@link #currentStarSpinTime}) — the star's spin-time is frozen at this instant
+     *                         under whichever mode was active (a constant rate, or the sweep) before the new
+     *                         rate takes effect.
+     * @return the current spin-time (the new anchor) — callers that only need to change the rate can ignore this
+     */
+    public double setStarSpinRate(double newRate, double currentClockTime) {
+        starSpinAnchorTime = currentStarSpinTime(currentClockTime);
+        starSpinAnchorClockTime = currentClockTime;
+        starSpinRate = newRate;
+        starSpinSweep = false;
+        return starSpinAnchorTime;
+    }
+
+    /**
+     * Switches the star's spin to continuous sweep mode (a smooth, unending 1x–5x oscillation) — freezes the
+     * current spin-time under whichever mode was active first, same as {@link #setStarSpinRate}, so entering the
+     * sweep never jumps the angle either.
+     *
+     * @param currentClockTime the shared system clock's current reading (as {@link #setStarSpinRate})
+     * @return the current spin-time (the new anchor)
+     */
+    public double setStarSpinSweep(double currentClockTime) {
+        starSpinAnchorTime = currentStarSpinTime(currentClockTime);
+        starSpinAnchorClockTime = currentClockTime;
+        starSpinSweep = true;
+        return starSpinAnchorTime;
+    }
+
+    /**
+     * @param currentClockTime the shared system clock's current reading (world time + partial ticks, or the
+     *                         USS-synced virtual orbit time — whatever the renderer already uses for everything
+     *                         else)
+     * @return the star's current virtual spin-time — feed this to the star's own rotation calc in place of the
+     *         raw clock reading; every other rotating body (planets, satellites, orbit rings) keeps using the
+     *         raw clock reading directly, unaffected by the star's own spin rate
+     */
+    public double currentStarSpinTime(double currentClockTime) {
+        if (starSpinSweep) {
+            return USSRotationClock.sweepSpinTimeAt(
+                starSpinAnchorTime,
+                starSpinAnchorClockTime,
+                currentClockTime,
+                STAR_SPIN_SWEEP_MID,
+                STAR_SPIN_SWEEP_AMPLITUDE,
+                STAR_SPIN_SWEEP_ANGULAR_FREQUENCY);
+        }
+        return USSRotationClock.spinTimeAt(starSpinAnchorTime, starSpinRate, starSpinAnchorClockTime, currentClockTime);
     }
 
     /**
@@ -465,6 +560,10 @@ public class TileEntityEyeOfHarmony extends TileEntity {
     private static final String INFRA_SHELL_CAP_NBT_TAG = EOH_NBT_TAG + "infra_shell_cap";
     private static final String ORBIT_TIME_NBT_TAG = EOH_NBT_TAG + "orbit_time";
     private static final String ORBIT_SYNC_NBT_TAG = EOH_NBT_TAG + "orbit_sync";
+    private static final String SPIN_ANCHOR_TIME_NBT_TAG = EOH_NBT_TAG + "spin_anchor_time";
+    private static final String SPIN_ANCHOR_CLOCK_NBT_TAG = EOH_NBT_TAG + "spin_anchor_clock";
+    private static final String SPIN_RATE_NBT_TAG = EOH_NBT_TAG + "spin_rate";
+    private static final String SPIN_SWEEP_NBT_TAG = EOH_NBT_TAG + "spin_sweep";
 
     @Override
     public void writeToNBT(NBTTagCompound compound) {
@@ -508,6 +607,18 @@ public class TileEntityEyeOfHarmony extends TileEntity {
         if (ussOrbitTime > 0) {
             compound.setLong(ORBIT_TIME_NBT_TAG, ussOrbitTime);
             compound.setLong(ORBIT_SYNC_NBT_TAG, ussSyncedWorldTime);
+        }
+
+        // The star's own spin-rate anchor (Voidcraft): persisted so chunk reloads and description packets carry
+        // it (rate 1.0 with a zero anchor is the registered look — the same as never having set one — so nothing
+        // is written for a star whose spin rate has never been touched).
+        if (starSpinRate != 1.0 || starSpinAnchorTime != 0.0 || starSpinAnchorClockTime != 0.0 || starSpinSweep) {
+            compound.setDouble(SPIN_ANCHOR_TIME_NBT_TAG, starSpinAnchorTime);
+            compound.setDouble(SPIN_ANCHOR_CLOCK_NBT_TAG, starSpinAnchorClockTime);
+            compound.setDouble(SPIN_RATE_NBT_TAG, starSpinRate);
+            if (starSpinSweep) {
+                compound.setBoolean(SPIN_SWEEP_NBT_TAG, true);
+            }
         }
 
         // Explicit planet system (Voidcraft) — persisted so chunk reloads and description packets carry it (the
@@ -592,6 +703,21 @@ public class TileEntityEyeOfHarmony extends TileEntity {
         } else if (ussOrbitTime > 0) {
             setUssOrbitTime(0, 0);
         }
+
+        // The star's own spin-rate anchor (Voidcraft): restore it, or clear a stale one when a legacy / never-set
+        // NBT arrives over the description-packet wire.
+        if (compound.hasKey(SPIN_RATE_NBT_TAG)) {
+            starSpinAnchorTime = compound.getDouble(SPIN_ANCHOR_TIME_NBT_TAG);
+            starSpinAnchorClockTime = compound.getDouble(SPIN_ANCHOR_CLOCK_NBT_TAG);
+            starSpinRate = compound.getDouble(SPIN_RATE_NBT_TAG);
+            starSpinSweep = compound.getBoolean(SPIN_SWEEP_NBT_TAG);
+        } else if (starSpinRate != 1.0 || starSpinAnchorTime != 0.0 || starSpinAnchorClockTime != 0.0
+            || starSpinSweep) {
+                starSpinAnchorTime = 0.0;
+                starSpinAnchorClockTime = 0.0;
+                starSpinRate = 1.0;
+                starSpinSweep = false;
+            }
 
         // Explicit planet system (Voidcraft): restore it (re-resolving the hologram blocks), or clear a stale one
         // when a legacy star NBT arrives over the description-packet wire.
