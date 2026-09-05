@@ -43,6 +43,7 @@ import tectech.loader.ConfigHandler;
 import tectech.thing.block.TileEntityEyeOfHarmony;
 import tectech.voidcraft.uss.USSFleetOrbit;
 import tectech.voidcraft.uss.USSInfraShell;
+import tectech.voidcraft.uss.USSNovaExplosion;
 import tectech.voidcraft.uss.USSSupernovaExplosion;
 
 public abstract class EOHRenderingUtils {
@@ -202,6 +203,35 @@ public abstract class EOHRenderingUtils {
             halo);
     }
 
+    // Nova's red-giant layer scale: USS_STAR_LAYER_SCALE's gaps tightened by half.
+    private static final float RED_GIANT_LAYER_STEP = 1.0f - (1.0f - USS_SHELL_STEP) / 2.0f;
+    private static final float[] RED_GIANT_LAYER_SCALE = { RED_GIANT_LAYER_STEP * RED_GIANT_LAYER_STEP,
+        RED_GIANT_LAYER_STEP, 1.0f };
+
+    /**
+     * Renders the Nova star body across its whole lifecycle (main sequence, red-giant, collapse, aftermath) as
+     * one continuous pass, always on the neutral (USS) texture set. Layer alpha/gain switch at detonation, when
+     * {@code energized} turns true.
+     */
+    public static void renderNovaStar(Matrix4fc base, IItemRenderer.ItemRenderType type, Color coreColor,
+        int shellColor, double partialTicks, double starRadius, boolean energized, float gainBoost) {
+        final Color shell = shellColor != 0 ? new Color(shellColor) : coreColor;
+        final float[] baseAlpha = energized ? USS_STAR_LAYER_ALPHA : LEGACY_STAR_LAYER_ALPHA;
+        final float[] baseGain = energized ? USS_STAR_LAYER_GAIN : NO_LAYER_GAIN;
+        renderStar(
+            base,
+            type,
+            new Color[] { coreColor, midpoint(coreColor, shell), shell },
+            partialTicks,
+            starRadius,
+            USS_STAR_LAYERS,
+            1.0f,
+            baseAlpha,
+            new float[] { baseGain[0] * gainBoost, baseGain[1] * gainBoost, baseGain[2] * gainBoost },
+            RED_GIANT_LAYER_SCALE,
+            false);
+    }
+
     // Used for GORGE item renderer only.
     private static final Color GORGEStarColour = new Color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -290,8 +320,6 @@ public abstract class EOHRenderingUtils {
             .getTextureManager()
             .bindTexture(texture);
 
-        // Kept in double until the modulo (see #7881): a float loses sub-tick precision once partialTicks grows
-        // large, which reads as the animation stuttering.
         final float rotation = (float) ((BASE_ROTATIONS[layer] + ROTATION_SPEEDS[layer] * rotationScale
             * partialTicks) % 360f);
         final float radius = (float) (starRadius * scale);
@@ -1088,8 +1116,6 @@ public abstract class EOHRenderingUtils {
             final ShaderHandle shader = texturedShader();
             shader.use();
             bindTexture(SUPERNOVA_CHURN_TEXTURE);
-            // Reduced into radians before the float cast (see #7881): a raw time·speed value loses the fractional
-            // radian a float needs for a smooth spin once time grows large.
             final float spinY = (float) ((time * SUPERNOVA_CHURN_SPIN_Y) % (2.0 * Math.PI));
             final float spinX = (float) ((time * SUPERNOVA_CHURN_SPIN_X) % (2.0 * Math.PI));
             churnMatrix.set(base)
@@ -1259,6 +1285,162 @@ public abstract class EOHRenderingUtils {
             endSphereCull(cullWas);
             RenderState.restoreBlendFunc(blendFuncWas);
             RenderState.restore(GL11.GL_BLEND, blendWas);
+            ShaderProgram.clear();
+        }
+    }
+
+    // endregion
+
+    // region Nova explosion
+
+    /**
+     * The shock shell's flattening: a true sphere (1.0) — an even shockwave expanding in every direction, not an
+     * equatorial disc (unlike {@link #SUPERNOVA_SHELL_FLATNESS}'s squashed-sphere disc).
+     */
+    public static final float NOVA_SHELL_FLATNESS = 1.0f;
+
+    /**
+     * The Nova explosion overlay: the dome flash and the near-invisible true-sphere shockwave, drawn after the
+     * star body and the infrastructure shells.
+     */
+    public static void renderNovaExplosion(Matrix4fc base, double starRadius, double domeRadius, int shellColor,
+        float progress) {
+        if (!shadersReady() || starRadius <= 0.0 || domeRadius <= 0.0) {
+            return;
+        }
+        final int flash = shellColor != 0 ? shellColor : 0xFFFFFFFF;
+        final float flashR = ((flash >> 16) & 0xFF) / 255f;
+        final float flashG = ((flash >> 8) & 0xFF) / 255f;
+        final float flashB = (flash & 0xFF) / 255f;
+
+        final float flashAlpha = USSNovaExplosion.domeFlashAlpha(progress);
+        if (flashAlpha > 0f) {
+            drawGlowSphere(
+                base,
+                RING_TEXTURE,
+                (float) (domeRadius * USSNovaExplosion.DOME_FLASH_RADIUS_FACTOR),
+                1.0f,
+                flashR,
+                flashG,
+                flashB,
+                flashAlpha);
+        }
+
+        final float travel = USSNovaExplosion.shellRadiusFraction(progress);
+        if (travel >= 0f) {
+            final float alpha = USSNovaExplosion.shellAlpha(progress);
+            if (alpha > 0f) {
+                final float shellStart = (float) starRadius * USSNovaExplosion.SHELL_START_FACTOR;
+                final float radius = (float) (shellStart + (domeRadius - shellStart) * travel);
+                final int shellTint = USSNovaExplosion.SHELL_COLOR;
+                drawGlowSphere(
+                    base,
+                    SUPERNOVA_SHELL_TEXTURE,
+                    radius,
+                    NOVA_SHELL_FLATNESS,
+                    ((shellTint >> 16) & 0xFF) / 255f,
+                    ((shellTint >> 8) & 0xFF) / 255f,
+                    (shellTint & 0xFF) / 255f,
+                    alpha);
+            }
+        }
+    }
+
+    // The Nova explosion's surface churn: a close roiling layer above the star's surface, drawn right after it.
+    public static void renderNovaChurn(Matrix4fc base, double time, float starRadius, int coreColor,
+        float alphaScale) {
+        if (!shadersReady() || starRadius <= 0f) {
+            return;
+        }
+        final float radius = starRadius * USSNovaExplosion.churnRadiusFactor(time);
+        final float alpha = USSNovaExplosion.churnAlpha(time) * alphaScale;
+        if (alpha <= 0.003f) {
+            return;
+        }
+        final int tint = coreColor != 0 ? coreColor : 0xFFFFFFFF;
+        final boolean blendWas = GL11.glGetBoolean(GL11.GL_BLEND);
+        final long blendFuncWas = RenderState.savedBlendFunc();
+        final long cullWas = beginSphereCull(false);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE); // additive light: never inherit a prior renderer's blend
+                                                          // function
+        GL11.glDepthMask(false); // pure overlay: depth-WRITE off (the test stays on)
+        try {
+            final ShaderHandle shader = texturedShader();
+            shader.use();
+            bindTexture(SUPERNOVA_CHURN_TEXTURE);
+            final float spinY = (float) ((time * SUPERNOVA_CHURN_SPIN_Y) % (2.0 * Math.PI));
+            final float spinX = (float) ((time * SUPERNOVA_CHURN_SPIN_X) % (2.0 * Math.PI));
+            churnMatrix.set(base)
+                .scale(radius, radius, radius)
+                .rotate(spinY, 0f, 1f, 0f)
+                .rotate(spinX, 1f, 0f, 0f);
+            GL20.glUniform4f(
+                shader.loc(SharedShaders.U_TINT),
+                ((tint >> 16) & 0xFF) / 255f,
+                ((tint >> 8) & 0xFF) / 255f,
+                (tint & 0xFF) / 255f,
+                alpha);
+            shader.uploadModel(churnMatrix);
+            eohSphere.render();
+        } finally {
+            GL11.glDepthMask(true);
+            endSphereCull(cullWas);
+            RenderState.restoreBlendFunc(blendFuncWas);
+            RenderState.restore(GL11.GL_BLEND, blendWas);
+            ShaderProgram.clear();
+        }
+    }
+
+    /** Orbit rings flash as the shock shell crosses them; reuses the rings' cached meshes and plane chain. */
+    public static void renderNovaRingFlashes(Matrix4fc base, List<TileEntityEyeOfHarmony.PlanetSpec> specs,
+        float starSize, float shellRadius, float shellAlpha, int flashColor) {
+        if (!shadersReady() || specs == null || specs.isEmpty() || shellRadius <= 0f || shellAlpha <= 0.003f) {
+            return;
+        }
+        final int count = Math.min(specs.size(), MAX_USS_PLANETS);
+        final int tint = flashColor != 0 ? flashColor : 0xFFFFFFFF;
+        final boolean cullOn = GL11.glIsEnabled(GL11.GL_CULL_FACE);
+        final boolean alphaTestOn = GL11.glIsEnabled(GL11.GL_ALPHA_TEST);
+        final boolean blendOn = GL11.glIsEnabled(GL11.GL_BLEND);
+        final long blendFuncWas = RenderState.savedBlendFunc();
+        GL11.glDisable(GL11.GL_CULL_FACE); // mixed torus winding — do not rely on the face convention
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE); // additive light: never inherit a prior renderer's blend
+                                                          // function
+        GL11.glDepthMask(false); // pure overlay: depth-tested (planet/star occlude it), depth-WRITE off
+        // The ring flash is a blended additive overlay — the world pass GL_GREATER 0.5 alpha test would discard
+        // its low-alpha quads (the same reason the orbit rings themselves draw with the test disabled).
+        GL11.glDisable(GL11.GL_ALPHA_TEST);
+        try {
+            final ShaderHandle shader = texturedShader();
+            shader.use();
+            bindTexture(RING_TEXTURE);
+            for (int i = 0; i < count; i++) {
+                final TileEntityEyeOfHarmony.PlanetSpec spec = specs.get(i);
+                final float radius = 0.2f + spec.distance + 0.2f * starSize; // the planet's orbit radius, exactly
+                final float alpha = USSNovaExplosion.ringFlashAlpha(shellRadius, radius, shellAlpha);
+                if (alpha <= 0.003f) {
+                    continue;
+                }
+                ringMatrix.set(base)
+                    .rotate((float) Math.toRadians(spec.xAngle), 1f, 0f, 0f)
+                    .rotate((float) Math.toRadians(spec.zAngle), 0f, 0f, 1f);
+                GL20.glUniform4f(
+                    shader.loc(SharedShaders.U_TINT),
+                    ((tint >> 16) & 0xFF) / 255f,
+                    ((tint >> 8) & 0xFF) / 255f,
+                    (tint & 0xFF) / 255f,
+                    alpha);
+                shader.uploadModel(ringMatrix);
+                ussRingFor(radius).render();
+            }
+        } finally {
+            GL11.glDepthMask(true);
+            RenderState.restoreBlendFunc(blendFuncWas);
+            RenderState.restore(GL11.GL_BLEND, blendOn);
+            RenderState.restore(GL11.GL_ALPHA_TEST, alphaTestOn);
+            RenderState.restore(GL11.GL_CULL_FACE, cullOn);
             ShaderProgram.clear();
         }
     }
@@ -1672,9 +1854,6 @@ public abstract class EOHRenderingUtils {
             GL11.glEnable(GL11.GL_BLEND);
             GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
 
-            // tilt (fixed) then spin (the world clock) — the shell keeps a readable face while turning. Reduced
-            // into radians before the float cast (see #7881): a raw time·speed value loses the fractional radian
-            // a float needs for a smooth spin once time grows large.
             final float spin = (float) ((time * DYSON_ROTATION_SPEED) % (2.0 * Math.PI));
             dysonMatrix.set(base)
                 .rotate(DYSON_TILT, 1f, 0f, 0f)

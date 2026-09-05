@@ -30,7 +30,12 @@ public enum USSStarRenderType {
     /**
      * The supernova treatment on the hotter, faster phase table (the hypernova).
      */
-    HYPERNOVA;
+    HYPERNOVA,
+
+    /**
+     * Realistic-esque supernova.
+     */
+    NOVA;
 
     /**
      * Resolve a stored ordinal (the render tile's NBT) to a render type.

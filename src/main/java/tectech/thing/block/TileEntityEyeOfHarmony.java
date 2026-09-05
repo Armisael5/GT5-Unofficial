@@ -233,24 +233,12 @@ public class TileEntityEyeOfHarmony extends TileEntity {
         this.ussSyncedWorldTime = syncedWorldTime;
     }
 
-    /**
-     * The star's own spin-rate multiplier, as an anchored {@link USSRotationClock}: {@code speed × elapsedTime}
-     * would jump the star's rotation the instant the speed changes (the whole angle recomputes under the new
-     * speed against an already-large elapsed time), so instead the star's accumulated virtual spin-time is
-     * anchored at the moment the speed last changed — {@link #setStarSpinRate}/{@link #setStarSpinSweep} freeze
-     * the current spin-time under whichever mode was active before applying the new one, so the visible rotation
-     * only ever changes its RATE, never its angle. 1.0 = the registered look (spin-time tracks the shared system
-     * clock 1:1, unchanged from before this existed).
-     */
+    /** The star's own spin-rate multiplier, as an anchored {@link USSRotationClock}. 1.0 = normal speed. */
     private double starSpinAnchorTime = 0.0;
     private double starSpinAnchorClockTime = 0.0;
     private double starSpinRate = 1.0;
 
-    /**
-     * True while the star's spin rate continuously, smoothly oscillates ({@link #STAR_SPIN_SWEEP_MID} ±
-     * {@link #STAR_SPIN_SWEEP_AMPLITUDE}) instead of holding {@link #starSpinRate} constant — see
-     * {@link USSRotationClock#sweepSpinTimeAt}.
-     */
+    /** True while the spin rate follows {@link USSRotationClock#sweepSpinTimeAt} instead of a constant rate. */
     private boolean starSpinSweep = false;
 
     /** The sweep mode's center speed (with {@link #STAR_SPIN_SWEEP_AMPLITUDE}, a 1x–5x range). */
@@ -276,13 +264,7 @@ public class TileEntityEyeOfHarmony extends TileEntity {
         return starSpinSweep;
     }
 
-    /**
-     * @param currentClockTime the shared system clock's current reading (the same value passed to
-     *                         {@link #currentStarSpinTime}) — the star's spin-time is frozen at this instant
-     *                         under whichever mode was active (a constant rate, or the sweep) before the new
-     *                         rate takes effect.
-     * @return the current spin-time (the new anchor) — callers that only need to change the rate can ignore this
-     */
+    // Sets the star's spin-rate multiplier, re-anchoring so the angle does not jump. Returns the new anchor.
     public double setStarSpinRate(double newRate, double currentClockTime) {
         starSpinAnchorTime = currentStarSpinTime(currentClockTime);
         starSpinAnchorClockTime = currentClockTime;
@@ -291,14 +273,7 @@ public class TileEntityEyeOfHarmony extends TileEntity {
         return starSpinAnchorTime;
     }
 
-    /**
-     * Switches the star's spin to continuous sweep mode (a smooth, unending 1x–5x oscillation) — freezes the
-     * current spin-time under whichever mode was active first, same as {@link #setStarSpinRate}, so entering the
-     * sweep never jumps the angle either.
-     *
-     * @param currentClockTime the shared system clock's current reading (as {@link #setStarSpinRate})
-     * @return the current spin-time (the new anchor)
-     */
+    // Switches to the continuous sweep mode, re-anchoring the same way as {@link #setStarSpinRate}.
     public double setStarSpinSweep(double currentClockTime) {
         starSpinAnchorTime = currentStarSpinTime(currentClockTime);
         starSpinAnchorClockTime = currentClockTime;
@@ -306,14 +281,7 @@ public class TileEntityEyeOfHarmony extends TileEntity {
         return starSpinAnchorTime;
     }
 
-    /**
-     * @param currentClockTime the shared system clock's current reading (world time + partial ticks, or the
-     *                         USS-synced virtual orbit time — whatever the renderer already uses for everything
-     *                         else)
-     * @return the star's current virtual spin-time — feed this to the star's own rotation calc in place of the
-     *         raw clock reading; every other rotating body (planets, satellites, orbit rings) keeps using the
-     *         raw clock reading directly, unaffected by the star's own spin rate
-     */
+    // The star's current spin-time for {@code currentClockTime}. Feed only the star's own rotation with this.
     public double currentStarSpinTime(double currentClockTime) {
         if (starSpinSweep) {
             return USSRotationClock.sweepSpinTimeAt(
@@ -469,14 +437,7 @@ public class TileEntityEyeOfHarmony extends TileEntity {
     }
 
     /**
-     * Install an explicit (Voidcraft) planet system (replacing anything present).
-     *
-     * <p>
-     * Voidcraft planets are rendered from their bundled textures (see {@link PlanetSpec#texture}), not from the IORE
-     * dimension-display blocks, so the legacy {@code orbitingObjects} render list is left empty for an explicit
-     * system — the USS render path reads {@link #getPlanetSpecs()} directly.
-     *
-     * @param specs the explicit planet system (null allowed)
+     * Install an explicit (Voidcraft) planet system.
      */
     public void setPlanets(List<PlanetSpec> specs) {
         orbitingObjects.clear();
@@ -489,7 +450,7 @@ public class TileEntityEyeOfHarmony extends TileEntity {
     }
 
     /**
-     * @return the explicit system as installed (empty when none — the legacy lazy path applies).
+     * @return the explicit system as installed.
      */
     public List<PlanetSpec> getPlanetSpecs() {
         return planetSpecs;

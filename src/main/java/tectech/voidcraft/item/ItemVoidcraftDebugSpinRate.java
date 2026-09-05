@@ -27,20 +27,9 @@ import tectech.TecTech;
 import tectech.voidcraft.uss.MTEUnstableSolarSystem;
 
 /**
- * Debug item: right-clicking it on an UnstableSolarSystem machine LINKS it to that machine (persisted in the
- * item's own NBT — the machine's base position/dimension never move across ignition/re-ignition cycles, so the
- * link survives them) and cycles its star's spin-rate multiplier through a fixed preset list plus a continuous
- * sweep mode. Once linked, right-clicking it anywhere else (open air — no machine needs to be in reach) repeats
- * that cycle WIRELESSLY on the linked machine, so the effect can be watched from a distance instead of only from
- * right at the controller.
- *
- * <p>
- * Visual proof that the anchor+rate rotation clock ({@code USSRotationClock}) never jumps the star's rotation
- * when its speed changes — only the rate it turns at from that moment on (no resource cost — the item itself is
- * inert; the block-click path still rides the debug item → effect registry like the other debug tools).
- *
- * <p>
- * A plain stackable item with no block of its own.
+ * Debug item: right-click an UnstableSolarSystem machine to link this tool to it and cycle its star's spin-rate
+ * multiplier through a preset list plus a continuous sweep. Right-click in open air afterward to cycle it again
+ * remotely.
  */
 public final class ItemVoidcraftDebugSpinRate extends Item {
 
@@ -62,11 +51,7 @@ public final class ItemVoidcraftDebugSpinRate extends Item {
         setCreativeTab(TecTech.creativeTabTecTech);
     }
 
-    /**
-     * Records the machine's position as this stack's remote target (called from the on-block debug effect —
-     * see {@code VoidcraftLoader} — every time the tool is used directly on a machine, so pointing it at a
-     * different USS re-links it there).
-     */
+    /** Records the machine's position as this stack's link target, replacing any previous link. */
     public static void link(ItemStack stack, World world, int x, int y, int z) {
         NBTTagCompound tag = ItemStackNBT.get(stack);
         tag.setInteger(LINK_DIM_TAG, world.provider.dimensionId);
@@ -98,8 +83,7 @@ public final class ItemVoidcraftDebugSpinRate extends Item {
 
     @Override
     public ItemStack onItemRightClick(ItemStack stack, World world, EntityPlayer player) {
-        // Open-air click only (see class doc) — a click aimed at a machine is handled by the on-block debug
-        // effect path instead (VoidcraftLoader), which never reaches here.
+        // Open-air click only; a click on a machine is handled by the on-block debug effect instead.
         if (world.isRemote) {
             return stack;
         }

@@ -68,6 +68,8 @@ public final class USSConstants {
                 return 24_000L;
             case SUPERNOVA:
                 return 6_000L;
+            case NOVA:
+                return 6_000L;
             case BLACK_HOLE:
                 return 3_600_000L;
             case QUASI_STAR:
@@ -108,6 +110,8 @@ public final class USSConstants {
             case RED_SUPERGIANT:
                 return 4096L;
             case SUPERNOVA:
+                return 16384L;
+            case NOVA:
                 return 16384L;
             case BLACK_HOLE:
                 return 8192L;
@@ -565,6 +569,8 @@ public final class USSConstants {
                 return 8;
             case SUPERNOVA:
                 return 12;
+            case NOVA:
+                return 12;
             case BLACK_HOLE:
                 return 8;
             case QUASI_STAR:
@@ -698,6 +704,8 @@ public final class USSConstants {
             case RED_SUPERGIANT:
                 return 30_000_000L;
             case SUPERNOVA:
+                return 50_000_000L;
+            case NOVA:
                 return 50_000_000L;
             case BLACK_HOLE:
                 return 40_000_000L;

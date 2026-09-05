@@ -33,7 +33,9 @@ public enum USSStarType {
     NEUTRON_STAR,
     MAGNETAR,
     GRAVASTAR,
-    QUARK_STAR;
+    QUARK_STAR,
+    /** A dev-testing sibling of {@link #SUPERNOVA}; kept last so no existing ordinal/controller meta shifts. */
+    NOVA;
 
     /**
      * @return this star class as a language key for info-data display.

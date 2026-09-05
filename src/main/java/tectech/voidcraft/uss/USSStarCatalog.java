@@ -181,6 +181,26 @@ public final class USSStarCatalog {
                 .renderType(USSStarRenderType.SUPERNOVA)
                 .build());
 
+        // Nova: appended at the end so it doesn't shift any existing controller meta.
+        USSStarRegistry.register(
+            USSStarDefinition.builder()
+                .id("nova")
+                .nameMethod(() -> "Nova")
+                .type("Nova")
+                .sizeRange(2.0f, 4.0f)
+                .main(Materials.Silicon, 3.0, 400L)
+                .secondary(Materials.Iron, 2.0, 200L)
+                .tertiary(Materials.Nickel, 1.0, 100L)
+                .luminosity(10.0f)
+                .planetRange(0, 2)
+                .rippleRange(32, 128)
+                .texture("star_supernova")
+                .evolutionTarget("black_hole")
+                .color(0xFF9FD8FF) // light blue, matches USSNovaExplosion's collapse endpoint
+                .shellColor(0xFF9FD8FF) // light blue
+                .renderType(USSStarRenderType.NOVA)
+                .build());
+
         USSStarRegistry.register(
             USSStarDefinition.builder()
                 .id("black_hole")

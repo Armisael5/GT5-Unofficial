@@ -235,12 +235,8 @@ public final class VoidcraftLoader {
         });
         TecTech.LOGGER.info("Star depletion debug item registered");
 
-        // Debug tool (item → effect registry): right-clicked on the UnstableSolarSystem machine, LINKS the tool
-        // to that machine (persisted on the stack, so it survives the machine's ignition/re-ignition cycles) and
-        // cycles its star's spin-rate multiplier through a fixed preset list plus a continuous sweep mode — the
-        // visual proof the anchor+rate rotation clock (USSRotationClock) never jumps the star's rotation when
-        // the rate changes. Once linked, right-clicking the SAME tool in open air repeats the cycle wirelessly
-        // (see ItemVoidcraftDebugSpinRate.onItemRightClick) so the effect can be watched from a distance.
+        // Debug tool: right-click links it to the machine and cycles the star's spin-rate multiplier through
+        // presets plus a continuous sweep. Right-click in open air afterward to repeat it remotely.
         ItemVoidcraftDebugSpinRate.run();
         VoidcraftDebugEffectRegistry.register(ItemVoidcraftDebugSpinRate.INSTANCE, (machine, player) -> {
             IGregTechTileEntity mte = machine.getBaseMetaTileEntity();

@@ -22,6 +22,7 @@ import tectech.client.USSSparkFX;
 import tectech.thing.block.TileEntityEyeOfHarmony;
 import tectech.voidcraft.uss.USSConstants;
 import tectech.voidcraft.uss.USSInfraBuild;
+import tectech.voidcraft.uss.USSNovaExplosion;
 import tectech.voidcraft.uss.USSStarRenderType;
 import tectech.voidcraft.uss.USSStarType;
 import tectech.voidcraft.uss.USSSupernovaExplosion;
@@ -69,8 +70,6 @@ public class EOHTileEntitySR extends TileEntitySpecialRenderer {
         // Voidcraft USS has synced its virtual orbit clock — then advance from the last sync at the normal rate
         // so the star/planet phases keep the server's clock (it only ever runs FASTER than the world during a
         // stellar-acceleration second, which the machine re-syncs every tick of).
-        // Kept as double (see #7881): a float loses sub-tick precision once the accumulated tick count grows large,
-        // which reads as the animation stuttering.
         double time;
         if (te.getUssOrbitTime() > 0L) {
             long sinceSync = world.getTotalWorldTime() - te.getUssSyncedWorldTime();
@@ -78,9 +77,7 @@ public class EOHTileEntitySR extends TileEntitySpecialRenderer {
         } else {
             time = (double) world.getTotalWorldTime() + partialTicks;
         }
-        // The star's own spin rides an independently-adjustable rate on top of the shared clock above (see
-        // TileEntityEyeOfHarmony.currentStarSpinTime / USSRotationClock): changing that rate re-anchors instead
-        // of recomputing the whole angle, so it never jumps — only its speed changes going forward.
+        // The star's own spin rides an independent rate on top of the clock above (see currentStarSpinTime).
         final double starSpinTime = te.currentStarSpinTime(time);
 
         eyeModel.translation((float) x + 0.5f, (float) y + 0.5f, (float) z + 0.5f);
@@ -97,32 +94,35 @@ public class EOHTileEntitySR extends TileEntitySpecialRenderer {
         // star class's registered color; legacy EoH machines keep the orange legacy layers + default orange tint.
         if (te.hasExplicitPlanets()) {
             final USSStarRenderType starRenderType = te.getStarRenderType();
-            final boolean hypernova = starRenderType == USSStarRenderType.HYPERNOVA;
-            final boolean exploding = starRenderType == USSStarRenderType.SUPERNOVA || hypernova;
-            final float progress = exploding ? USSSupernovaExplosion.progress(
-                USSConstants.lifespanForType(hypernova ? USSStarType.HYPERNOVA : USSStarType.SUPERNOVA),
-                te.getStarLifespanRemaining()) : 0f;
-            final double starRadius = te.getStarSize()
-                * (exploding ? USSSupernovaExplosion.bodyScale(progress, hypernova) : 1.0d);
-            if (!exploding) {
-                // −1 = "not mid-show": the detonation burst fires only on a crossing the client saw (see
-                // explosionLastProgress).
-                te.setExplosionLastProgress(-1f);
-            }
-            EOHRenderingUtils.renderUSSStar(
-                eyeModel,
-                IItemRenderer.ItemRenderType.INVENTORY,
-                new Color(te.getStarColor()),
-                te.getStarShellColor(),
-                starSpinTime,
-                starRadius,
-                te.isStarHalo(),
-                exploding ? USSSupernovaExplosion.bodyGain(progress, hypernova, time) : 1f);
-            // The explosion's surface churn — drawn right after the star body so the swarm/infrastructure shells pass
-            // over
-            // it (the star's roiling layer, spinning and pulsing on the virtual clock).
-            if (exploding) {
-                EOHRenderingUtils.renderSupernovaChurn(eyeModel, time, (float) starRadius, te.getStarColor());
+            if (starRenderType == USSStarRenderType.NOVA) {
+                renderNovaStar(te, world, time, starSpinTime, x, y, z);
+            } else {
+                final boolean hypernova = starRenderType == USSStarRenderType.HYPERNOVA;
+                final boolean exploding = starRenderType == USSStarRenderType.SUPERNOVA || hypernova;
+                final float progress = exploding ? USSSupernovaExplosion.progress(
+                    USSConstants.lifespanForType(hypernova ? USSStarType.HYPERNOVA : USSStarType.SUPERNOVA),
+                    te.getStarLifespanRemaining()) : 0f;
+                final double starRadius = te.getStarSize()
+                    * (exploding ? USSSupernovaExplosion.bodyScale(progress, hypernova) : 1.0d);
+                if (!exploding) {
+                    // −1 = "not mid-show": the detonation burst fires only on a crossing the client saw (see
+                    // explosionLastProgress).
+                    te.setExplosionLastProgress(-1f);
+                }
+                EOHRenderingUtils.renderUSSStar(
+                    eyeModel,
+                    IItemRenderer.ItemRenderType.INVENTORY,
+                    new Color(te.getStarColor()),
+                    te.getStarShellColor(),
+                    starSpinTime,
+                    starRadius,
+                    te.isStarHalo(),
+                    exploding ? USSSupernovaExplosion.bodyGain(progress, hypernova, time) : 1f);
+                // The explosion's surface churn — drawn right after the star body so the swarm/infrastructure
+                // shells pass over it (the star's roiling layer, spinning and pulsing on the virtual clock).
+                if (exploding) {
+                    EOHRenderingUtils.renderSupernovaChurn(eyeModel, time, (float) starRadius, te.getStarColor());
+                }
             }
             // Custom render treatments (the star's registered render type): the magnetar's magnetic dipole loops
             // pass through the core — drawn AFTER the star body so the body's written depth occludes the far arcs
@@ -172,9 +172,18 @@ public class EOHTileEntitySR extends TileEntitySpecialRenderer {
                         EOHRenderingUtils.LENS_ACCENT_TINT);
                 }
             }
-            // The supernova/hypernova explosion overlay — drawn LAST: the additive light washes over the
-            // infrastructure shells too (the detonation illuminates the whole system view).
-            if (exploding) {
+            // Nova overlay, drawn LAST like the classic one below. Safe unconditionally: every value is 0
+            // pre-detonation.
+            if (starRenderType == USSStarRenderType.NOVA) {
+                renderNovaExplosionOverlay(te, world, x, y, z);
+            }
+            // The supernova/hypernova explosion overlay (classic render types only) — drawn LAST: the additive
+            // light washes over the infrastructure shells too (the detonation illuminates the whole system view).
+            if (starRenderType == USSStarRenderType.SUPERNOVA || starRenderType == USSStarRenderType.HYPERNOVA) {
+                final boolean hypernova = starRenderType == USSStarRenderType.HYPERNOVA;
+                final float progress = USSSupernovaExplosion.progress(
+                    USSConstants.lifespanForType(hypernova ? USSStarType.HYPERNOVA : USSStarType.SUPERNOVA),
+                    te.getStarLifespanRemaining());
                 EOHRenderingUtils.renderSupernovaExplosion(
                     eyeModel,
                     te.getStarSize(),
@@ -230,6 +239,160 @@ public class EOHTileEntitySR extends TileEntitySpecialRenderer {
 
         bindTexture(TextureMap.locationBlocksTexture);
         EOHRenderingUtils.renderOrbits(eyeModel, objects, time, (float) te.getStarSize(), SPEED_SCALE, STAR_RESCALE);
+    }
+
+    /**
+     * Nova's post-prelude show progress (0..1), computed independently by {@link #renderNovaStar} and
+     * {@link #renderNovaExplosionOverlay}.
+     */
+    private static float novaProgress(TileEntityEyeOfHarmony te) {
+        final long novaLifespan = USSConstants.lifespanForType(USSStarType.NOVA);
+        final long elapsed = novaLifespan - te.getStarLifespanRemaining();
+        if (USSNovaExplosion.inRedGiantPrelude(elapsed)) {
+            return 0f;
+        }
+        final long explosionNominalLifespan = novaLifespan - USSNovaExplosion.RED_GIANT_PRELUDE_TICKS;
+        return USSNovaExplosion.progress(explosionNominalLifespan, te.getStarLifespanRemaining());
+    }
+
+    /** Renders the Nova star body across its lifecycle — mirrors the classic branch above, growing to the dome. */
+    private void renderNovaStar(TileEntityEyeOfHarmony te, World world, double time, double starSpinTime, double x,
+        double y, double z) {
+        final long novaLifespan = USSConstants.lifespanForType(USSStarType.NOVA);
+        final long elapsed = novaLifespan - te.getStarLifespanRemaining();
+        final boolean inRedGiantPrelude = USSNovaExplosion.inRedGiantPrelude(elapsed);
+        final boolean exploding = !inRedGiantPrelude;
+        final long explosionNominalLifespan = novaLifespan - USSNovaExplosion.RED_GIANT_PRELUDE_TICKS;
+        final float progress = exploding
+            ? USSNovaExplosion.progress(explosionNominalLifespan, te.getStarLifespanRemaining())
+            : 0f;
+        // Targets the actual dome radius, not a fixed multiplier — caps at half the dome regardless of rolled size.
+        final float novaPeakScale = (float) (te.getDomeRadius() / te.getStarSize());
+        final double starRadius = te.getStarSize()
+            * (exploding ? USSNovaExplosion.bodyScale(progress, novaPeakScale) : 1.0d);
+        if (!exploding) {
+            // −1 = "not mid-show": the detonation burst fires only on a crossing the client saw (see
+            // explosionLastProgress).
+            te.setExplosionLastProgress(-1f);
+        }
+        // Collapse color ramp runs pre-detonation; the catalog color takes over from the flash onward.
+        final boolean collapsing = exploding && progress < USSNovaExplosion.DETONATION_START;
+        // Color/texture/fade pace independently of size — see USSNovaExplosion.collapseColorFraction.
+        final float colorFraction = collapsing ? USSNovaExplosion.collapseColorFraction(progress) : 0f;
+        final boolean energized = exploding && !collapsing;
+        // See USSNovaExplosion.collapseFadeIn.
+        final float collapseFadeIn = collapsing ? USSNovaExplosion.collapseFadeIn(colorFraction) : 1f;
+        final Color bodyColor;
+        final int bodyShellColor;
+        final double bodyRadius;
+        if (inRedGiantPrelude) {
+            final float swellFraction = USSNovaExplosion.redGiantSwellFraction(elapsed);
+            final int swellColor = USSNovaExplosion.lerpColor(
+                USSNovaExplosion.MAIN_SEQUENCE_COLOR,
+                USSNovaExplosion.RED_GIANT_COLOR,
+                swellFraction);
+            bodyColor = new Color(swellColor);
+            bodyShellColor = swellColor;
+            bodyRadius = te.getStarSize() * (1.0 + (USSNovaExplosion.RED_GIANT_SCALE - 1.0) * swellFraction);
+        } else if (collapsing) {
+            bodyColor = new Color(USSNovaExplosion.collapseCoreColor(colorFraction));
+            bodyShellColor = USSNovaExplosion.collapseShellColor(colorFraction);
+            bodyRadius = starRadius;
+        } else {
+            bodyColor = new Color(te.getStarColor());
+            bodyShellColor = te.getStarShellColor();
+            bodyRadius = starRadius;
+        }
+        EOHRenderingUtils.renderNovaStar(
+            eyeModel,
+            IItemRenderer.ItemRenderType.INVENTORY,
+            bodyColor,
+            bodyShellColor,
+            starSpinTime,
+            bodyRadius,
+            energized,
+            exploding ? USSNovaExplosion.bodyGain(progress, time) : 1f);
+        // The explosion's surface churn — drawn right after the star body so the swarm/infrastructure shells
+        // pass over it (the star's roiling layer, spinning and pulsing on the virtual clock).
+        if (exploding) {
+            EOHRenderingUtils.renderNovaChurn(eyeModel, time, (float) starRadius, te.getStarColor(), collapseFadeIn);
+        }
+    }
+
+    /** Nova's dome flash, shockwave, ring flashes, and particles — the overlay half of {@link #renderNovaStar}. */
+    private void renderNovaExplosionOverlay(TileEntityEyeOfHarmony te, World world, double x, double y, double z) {
+        final float progress = novaProgress(te);
+        EOHRenderingUtils.renderNovaExplosion(
+            eyeModel,
+            te.getStarSize(),
+            te.getDomeRadius(),
+            te.getStarShellColor(),
+            progress);
+        // Rings light up as the shock disc crosses them; travels from the nominal rim, not the re-inflated body.
+        final float travel = USSNovaExplosion.shellRadiusFraction(progress);
+        if (travel >= 0f) {
+            final double starSize = te.getStarSize();
+            final float shellStart = (float) starSize * USSNovaExplosion.SHELL_START_FACTOR;
+            final float shellRadius = (float) (shellStart + (te.getDomeRadius() - shellStart) * travel);
+            EOHRenderingUtils.renderNovaRingFlashes(
+                eyeModel,
+                te.getPlanetSpecs(),
+                (float) starSize,
+                shellRadius,
+                USSNovaExplosion.shellAlpha(progress),
+                USSNovaExplosion.SHELL_COLOR);
+        }
+        spawnNovaExplosionParticles(te, world, progress, te.getStarSize(), x, y, z);
+    }
+
+    /**
+     * The Nova explosion's client particles — mirrors {@link #spawnExplosionParticles} on
+     * {@link USSNovaExplosion}'s single-class math (no hypernova variant array index).
+     */
+    private void spawnNovaExplosionParticles(TileEntityEyeOfHarmony te, World world, float progress,
+        double starRadius, double x, double y, double z) {
+        final float det = USSNovaExplosion.DETONATION_START;
+        final float last = te.getExplosionLastProgress();
+        te.setExplosionLastProgress(progress);
+        final boolean burst = last >= 0f && last < det && progress >= det;
+        if (burst) {
+            for (int i = 0; i < PARTICLE_BURST_COUNT; i++) {
+                spawnNovaSpark(world, x, y, z, starRadius, PARTICLE_BURST_SPEED_FACTOR);
+            }
+            return; // the burst frame carries its own 240 sparks — skip the per-tick spray
+        }
+        final float shellEnd = USSNovaExplosion.SHELL_TRAVEL_END;
+        if (progress >= det && progress <= shellEnd && world.getTotalWorldTime() != te.getExplosionLastSparkTick()) {
+            te.setExplosionLastSparkTick(world.getTotalWorldTime());
+            for (int i = 0; i < PARTICLE_SPARKS_PER_TICK; i++) {
+                spawnNovaSpark(world, x, y, z, starRadius, PARTICLE_SPARK_SPEED_FACTOR);
+            }
+        }
+    }
+
+    /** One Nova spark: mirrors {@link #spawnSpark} on {@link USSNovaExplosion#SHELL_COLOR}. */
+    private void spawnNovaSpark(World world, double x, double y, double z, double starRadius, float speedFactor) {
+        final float theta = (float) (PARTICLE_RANDOM.nextDouble() * 2.0 * Math.PI);
+        final float cosPhi = (float) (PARTICLE_RANDOM.nextDouble() * 2.0 - 1.0);
+        final float sinPhi = (float) Math.sqrt(1.0 - cosPhi * cosPhi);
+        final double dx = sinPhi * Math.cos(theta);
+        final double dy = cosPhi;
+        final double dz = sinPhi * Math.sin(theta);
+        final float speed = (float) starRadius * speedFactor;
+        final int color = USSNovaExplosion.SHELL_COLOR;
+        final int r = mixTowardWhite((color >> 16) & 0xFF);
+        final int g = mixTowardWhite((color >> 8) & 0xFF);
+        final int b = mixTowardWhite(color & 0xFF);
+        final USSSparkFX fx = new USSSparkFX(
+            world,
+            x + 0.5 + dx * starRadius,
+            y + 0.5 + dy * starRadius,
+            z + 0.5 + dz * starRadius,
+            dx * speed,
+            dy * speed,
+            dz * speed);
+        fx.setRBGColorF(r / 255f, g / 255f, b / 255f);
+        Minecraft.getMinecraft().effectRenderer.addEffect(fx);
     }
 
     /**
