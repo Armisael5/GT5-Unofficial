@@ -203,7 +203,7 @@ public final class USSSupernovaExplosion {
      *                  during a stellar-acceleration second, fast-forwarding the show)
      * @return the gain multiplier (&ge; 0)
      */
-    public static float bodyGain(float progress, boolean hypernova, float time) {
+    public static float bodyGain(float progress, boolean hypernova, double time) {
         final int v = hypernova ? 1 : 0;
         final float p = clamp01(progress);
         final float det = DETONATION_START[v];
@@ -419,7 +419,7 @@ public final class USSSupernovaExplosion {
      * @param time the animation clock in ticks
      * @return the alpha (&ge; 0)
      */
-    public static float churnAlpha(float time) {
+    public static float churnAlpha(double time) {
         return CHURN_ALPHA * (1f + CHURN_PULSE_DEPTH * fastSin(time, CHURN_PULSE_PERIOD));
     }
 
@@ -430,7 +430,7 @@ public final class USSSupernovaExplosion {
      * @param time the animation clock in ticks
      * @return the factor (&gt; 0)
      */
-    public static float churnRadiusFactor(float time) {
+    public static float churnRadiusFactor(double time) {
         return CHURN_RADIUS_FACTOR + CHURN_SWELL * fastSin(time, CHURN_SWELL_PERIOD);
     }
 
@@ -455,16 +455,20 @@ public final class USSSupernovaExplosion {
         return RING_FLASH_ALPHA * shellAlpha * (float) Math.exp(-past / RING_FLASH_DECAY);
     }
 
-    /** The fast churn clock, reduced into the period before the sin (same float-precision guard as the body pulse). */
-    private static float fastSin(float time, float period) {
+    /**
+     * The fast churn clock, reduced into the period before the sin (same float-precision guard as the body pulse).
+     * {@code time} is double so the truncation to {@code long} below happens before any precision is lost (see
+     * #7881) — a float argument would already have rounded away the sub-tick phase on a long-running world.
+     */
+    private static float fastSin(double time, float period) {
         final long p = (long) period;
         final long phase = (long) time % p;
         return (float) Math.sin(phase * 2.0 * Math.PI / p);
     }
 
-    private static float pulse(float time) {
+    private static float pulse(double time) {
         // Reduce into the period before the sin: the world tick outgrows a float's mantissa, and the pulse phase
-        // would lose its rhythm on old worlds.
+        // would lose its rhythm on old worlds. time is double so this truncation is the first precision loss.
         final long phase = (long) time % (long) PULSE_PERIOD_TICKS;
         return (float) Math.sin(phase * 2.0 * Math.PI / PULSE_PERIOD_TICKS);
     }
