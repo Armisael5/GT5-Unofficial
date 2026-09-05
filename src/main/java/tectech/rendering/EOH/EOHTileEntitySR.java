@@ -319,15 +319,9 @@ public class EOHTileEntitySR extends TileEntitySpecialRenderer {
         }
     }
 
-    /** Nova's dome flash, shockwave, ring flashes, and particles — the overlay half of {@link #renderNovaStar}. */
+    /** Nova's ring flashes and particles — the overlay half of {@link #renderNovaStar}. */
     private void renderNovaExplosionOverlay(TileEntityEyeOfHarmony te, World world, double x, double y, double z) {
         final float progress = novaProgress(te);
-        EOHRenderingUtils.renderNovaExplosion(
-            eyeModel,
-            te.getStarSize(),
-            te.getDomeRadius(),
-            te.getStarShellColor(),
-            progress);
         // Rings light up as the shock disc crosses them; travels from the nominal rim, not the re-inflated body.
         final float travel = USSNovaExplosion.shellRadiusFraction(progress);
         if (travel >= 0f) {

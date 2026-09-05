@@ -17,9 +17,6 @@ public final class USSNovaExplosion {
     /** The detonation flash's peak layer gain (clipped past full-bright — the white-hot look). */
     public static final float FLASH_GAIN = 6.0f;
 
-    /** The dome flash's decay window (fraction of the lifetime). */
-    public static final float FLASH_WINDOW = 0.015f;
-
     /** The pre-collapse ember scale (× registered size); also the growth curve's starting point. */
     public static final float PRE_COLLAPSE_SCALE = 0.1f;
 
@@ -42,7 +39,7 @@ public final class USSNovaExplosion {
     public static final int SHELL_COLOR = 0xFFCCEEFF;
 
     /** The churn layer's radius, × the star's rendered radius. */
-    public static final float CHURN_RADIUS_FACTOR = 1.05f;
+    public static final float CHURN_RADIUS_FACTOR = 1.015f;
 
     /** The churn layer's peak alpha. */
     public static final float CHURN_ALPHA = 0.4f;
@@ -54,7 +51,7 @@ public final class USSNovaExplosion {
     public static final float CHURN_PULSE_DEPTH = 0.5f;
 
     /** The churn layer's radius wobble, × the star's rendered radius. */
-    public static final float CHURN_SWELL = 0.03f;
+    public static final float CHURN_SWELL = 0.01f;
 
     /** The churn's radius-wobble period in ticks. */
     public static final float CHURN_SWELL_PERIOD = 5f;
@@ -85,12 +82,6 @@ public final class USSNovaExplosion {
 
     /** The final flash's ramp, a fraction of the collapse window. */
     public static final float FINAL_FLASH_FRACTION = 0.06f;
-
-    /** The dome flash's peak alpha. */
-    public static final float DOME_FLASH_ALPHA = 0.5f;
-
-    /** The dome flash's radius, × the dome radius — a hair inside the space shell to avoid z-fighting. */
-    public static final float DOME_FLASH_RADIUS_FACTOR = 0.995f;
 
     /** The afterglow's brightness-pulse period in ticks. */
     public static final float PULSE_PERIOD_TICKS = 60f;
@@ -318,21 +309,6 @@ public final class USSNovaExplosion {
         final float decaySpan = end - attackEnd;
         final float f = decaySpan <= 0f ? 0f : Math.min(1f, Math.max(0f, 1f - (p - attackEnd) / decaySpan));
         return SHELL_ALPHA_PEAK * attack * (float) Math.pow(f, SHELL_ALPHA_FADE_POWER);
-    }
-
-    /** @return the dome flash's alpha: peaks at detonation, decaying quadratically to 0 over the flash window. */
-    public static float domeFlashAlpha(float progress) {
-        final float p = clamp01(progress);
-        final float det = DETONATION_START;
-        final float win = FLASH_WINDOW;
-        if (p < det || win <= 0f) {
-            return 0f;
-        }
-        final float f = 1f - (p - det) / win;
-        if (f <= 0f) {
-            return 0f;
-        }
-        return DOME_FLASH_ALPHA * f * f;
     }
 
     /** @return the churn layer's alpha: the peak modulated by the fast surface roll. */

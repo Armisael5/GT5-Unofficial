@@ -1293,59 +1293,6 @@ public abstract class EOHRenderingUtils {
 
     // region Nova explosion
 
-    /**
-     * The shock shell's flattening: a true sphere (1.0) — an even shockwave expanding in every direction, not an
-     * equatorial disc (unlike {@link #SUPERNOVA_SHELL_FLATNESS}'s squashed-sphere disc).
-     */
-    public static final float NOVA_SHELL_FLATNESS = 1.0f;
-
-    /**
-     * The Nova explosion overlay: the dome flash and the near-invisible true-sphere shockwave, drawn after the
-     * star body and the infrastructure shells.
-     */
-    public static void renderNovaExplosion(Matrix4fc base, double starRadius, double domeRadius, int shellColor,
-        float progress) {
-        if (!shadersReady() || starRadius <= 0.0 || domeRadius <= 0.0) {
-            return;
-        }
-        final int flash = shellColor != 0 ? shellColor : 0xFFFFFFFF;
-        final float flashR = ((flash >> 16) & 0xFF) / 255f;
-        final float flashG = ((flash >> 8) & 0xFF) / 255f;
-        final float flashB = (flash & 0xFF) / 255f;
-
-        final float flashAlpha = USSNovaExplosion.domeFlashAlpha(progress);
-        if (flashAlpha > 0f) {
-            drawGlowSphere(
-                base,
-                RING_TEXTURE,
-                (float) (domeRadius * USSNovaExplosion.DOME_FLASH_RADIUS_FACTOR),
-                1.0f,
-                flashR,
-                flashG,
-                flashB,
-                flashAlpha);
-        }
-
-        final float travel = USSNovaExplosion.shellRadiusFraction(progress);
-        if (travel >= 0f) {
-            final float alpha = USSNovaExplosion.shellAlpha(progress);
-            if (alpha > 0f) {
-                final float shellStart = (float) starRadius * USSNovaExplosion.SHELL_START_FACTOR;
-                final float radius = (float) (shellStart + (domeRadius - shellStart) * travel);
-                final int shellTint = USSNovaExplosion.SHELL_COLOR;
-                drawGlowSphere(
-                    base,
-                    SUPERNOVA_SHELL_TEXTURE,
-                    radius,
-                    NOVA_SHELL_FLATNESS,
-                    ((shellTint >> 16) & 0xFF) / 255f,
-                    ((shellTint >> 8) & 0xFF) / 255f,
-                    (shellTint & 0xFF) / 255f,
-                    alpha);
-            }
-        }
-    }
-
     // The Nova explosion's surface churn: a close roiling layer above the star's surface, drawn right after it.
     public static void renderNovaChurn(Matrix4fc base, double time, float starRadius, int coreColor,
         float alphaScale) {
