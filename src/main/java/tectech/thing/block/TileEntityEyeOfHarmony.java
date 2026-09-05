@@ -469,8 +469,7 @@ public class TileEntityEyeOfHarmony extends TileEntity {
     }
 
     /**
-     * Install an explicit (Voidcraft) planet system (replacing anything present). A null or empty list clears the
-     * explicit system — the legacy lazy-random path applies again.
+     * Install an explicit (Voidcraft) planet system (replacing anything present).
      *
      * <p>
      * Voidcraft planets are rendered from their bundled textures (see {@link PlanetSpec#texture}), not from the IORE
@@ -482,12 +481,11 @@ public class TileEntityEyeOfHarmony extends TileEntity {
     public void setPlanets(List<PlanetSpec> specs) {
         orbitingObjects.clear();
         planetSpecs.clear();
-        this.explicitPlanets = false;
-        if (specs == null || specs.isEmpty()) {
+        this.explicitPlanets = specs != null;
+        if (specs == null) {
             return;
         }
         planetSpecs.addAll(specs);
-        this.explicitPlanets = true;
     }
 
     /**
